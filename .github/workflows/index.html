@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K.I.T.T. Visual Voice Modulator</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Retro Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            background-color: #030304;
+            color: #ff2222;
+            font-family: 'Share Tech Mono', monospace;
+            user-select: none;
+            touch-action: manipulation;
+            overflow: hidden;
+        }
+
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* CRT Overlay Filter */
+        .crt-overlay {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.45) 50%
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+
+        /* Scanner Bar Sweeper Animation */
+        @keyframes scanner-sweep {
+            0% { left: 0%; }
+            50% { left: 75%; }
+            100% { left: 0%; }
+        }
+
+        .scanner-light {
+            position: absolute;
+            width: 25%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent 0%, #ff0000 50%, transparent 100%);
+            box-shadow: 0 0 20px #ff0000, 0 0 35px #ff0000;
+            animation: scanner-sweep 2.2s infinite ease-in-out;
+        }
+
+        /* LED Voicebox Segment Styling */
+        .led-segment {
+            background-color: #120101;
+            border: 1px solid rgba(80, 0, 0, 0.35);
+            transition: background-color 0.03s ease, box-shadow 0.03s ease;
+        }
+
+        .led-segment.active {
+            background-color: #ff0000;
+            box-shadow: 0 0 12px #ff0000, 0 0 25px #ff0000;
+        }
+
+        /* Pulsing Glow for Active Button */
+        @keyframes mic-pulse {
+            0% { box-shadow: 0 0 15px rgba(255, 0, 0, 0.6); }
+            50% { box-shadow: 0 0 40px rgba(255, 0, 0, 1), 0 0 60px rgba(255, 0, 0, 0.8); }
+            100% { box-shadow: 0 0 15px rgba(255, 0, 0, 0.6); }
+        }
+
+        .mic-active-glow {
+            animation: mic-pulse 1.5s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between items-center p-4 md:p-8 relative select-none">
+    
+    <!-- CRT Overlay -->
+    <div class="fixed inset-0 crt-overlay z-40"></div>
+
+    <!-- TOP CONTROL BAR WITH SETTINGS BUTTON -->
+    <div class="w-full max-w-2xl flex justify-between items-center z-50 mb-2">
+        <div class="text-xs md:text-sm font-orbitron tracking-widest text-red-700">K.I.T.T. VOICE SYSTEM</div>
+        <button id="open-settings-btn" class="text-red-700 hover:text-red-500 p-2 text-xl md:text-2xl transition-colors cursor-pointer focus:outline-none" title="Configure API Key">
+            <i class="fa-solid fa-gear" id="settings-icon"></i>
+        </button>
+    </div>
+
+    <!-- TOP SCANNER BAR -->
+    <div class="w-full max-w-2xl h-5 bg-black border-2 border-red-950 rounded-full overflow-hidden relative shadow-lg shadow-red-950/50">
+        <div class="absolute inset-0 bg-red-950/20 grid grid-cols-12"></div>
+        <div class="scanner-light"></div>
+    </div>
+
+    <!-- CENTER VOICEBOX VISUALIZER -->
+    <div class="flex-1 flex flex-col justify-center items-center w-full max-w-xl my-auto">
+        <div class="border-4 border-zinc-900 bg-black p-8 md:p-12 rounded-3xl flex flex-col items-center justify-center relative shadow-2xl shadow-red-950/70 w-full">
+            
+            <!-- Triple Column LED Visualizer -->
+            <div id="voicebox" class="flex gap-6 md:gap-10 justify-center items-center h-64 md:h-80 w-full px-8 py-6 bg-zinc-950 border-2 border-red-950/90 rounded-2xl relative overflow-hidden">
+                <!-- Left Column -->
+                <div id="col-left" class="flex flex-col gap-2 h-full justify-center w-10 sm:w-16"></div>
+
+                <!-- Center Column (Primary/Widest) -->
+                <div id="col-center" class="flex flex-col gap-2 h-full justify-center w-16 sm:w-24"></div>
+
+                <!-- Right Column -->
+                <div id="col-right" class="flex flex-col gap-2 h-full justify-center w-10 sm:w-16"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- PROTOCOL / SECURITY ERROR BANNER -->
+    <div id="mic-error-notice" class="w-full max-w-md mb-3 px-4 py-3 bg-red-950/80 border border-red-700 rounded-xl text-center shadow-lg hidden z-50">
+        <div class="text-sm text-red-300 font-orbitron flex items-center justify-center gap-2 mb-1">
+            <i class="fa-solid fa-triangle-exclamation text-yellow-500"></i>
+            <span id="mic-error-title">MIC ACCESS RESTRICTED</span>
+        </div>
+        <div id="mic-error-desc" class="text-xs text-red-400 font-mono">
+            Browser requires HTTPS or http://localhost for microphone access.
+        </div>
+    </div>
+
+    <!-- BOTTOM SINGLE PUSH TO TALK BUTTON -->
+    <div class="w-full max-w-md pb-6 z-10">
+        <button id="talk-btn" class="w-full py-6 bg-red-950 border-2 border-red-700 text-red-500 font-orbitron font-black text-xl md:text-2xl tracking-widest rounded-2xl shadow-2xl transition-all duration-200 flex items-center justify-center gap-4 cursor-pointer active:scale-95">
+            <i class="fa-solid fa-microphone text-2xl" id="mic-icon"></i>
+            <span id="talk-label">TOUCH TO TALK</span>
+        </button>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-zinc-950 border-2 border-red-800 rounded-2xl p-6 md:p-8 max-w-md w-full shadow-2xl text-red-500 relative">
+            <button id="close-settings-btn" class="absolute top-4 right-4 text-red-700 hover:text-red-400 text-xl cursor-pointer">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h2 class="font-orbitron text-xl md:text-2xl font-bold mb-4 tracking-wider text-red-500 border-b border-red-950 pb-2">SYSTEM CONFIGURATION</h2>
+            
+            <label class="block text-sm mb-2 font-orbitron tracking-wide text-zinc-400">GEMINI API KEY:</label>
+            <input type="password" id="api-key-input" placeholder="Paste your API key here..." class="w-full p-3 bg-black border border-red-900 rounded-lg text-red-400 focus:outline-none focus:border-red-500 mb-4 font-mono text-sm">
+            
+            <div class="flex justify-end gap-3">
+                <button id="save-api-key-btn" class="px-6 py-2.5 bg-red-900 hover:bg-red-700 border border-red-600 text-white font-orbitron text-sm tracking-wider rounded-lg transition-colors cursor-pointer">
+                    SAVE KEY
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { GoogleGenAI } from 'https://esm.run/@google/genai';
+
+        // Audio Context & Web Audio Nodes
+        let audioCtx = null;
+        let analyserNode = null;
+        let micStream = null;
+        let micSource = null;
+
+        // Speech & State Handling
+        let recognition = null;
+        let isListening = false;
+        let isSpeaking = false;
+        let audioBufferData = null;
+        const isFileProtocol = window.location.protocol === 'file:';
+
+        // UI References
+        const talkBtn = document.getElementById('talk-btn');
+        const talkLabel = document.getElementById('talk-label');
+        const micIcon = document.getElementById('mic-icon');
+        const settingsModal = document.getElementById('settings-modal');
+        const openSettingsBtn = document.getElementById('open-settings-btn');
+        const closeSettingsBtn = document.getElementById('close-settings-btn');
+        const saveApiKeyBtn = document.getElementById('save-api-key-btn');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const settingsIcon = document.getElementById('settings-icon');
+
+        const colLeft = document.getElementById('col-left');
+        const colCenter = document.getElementById('col-center');
+        const colRight = document.getElementById('col-right');
+
+        const micErrorNotice = document.getElementById('mic-error-notice');
+        const micErrorTitle = document.getElementById('mic-error-title');
+        const micErrorDesc = document.getElementById('mic-error-desc');
+
+        // Check local storage for existing API key
+        function updateApiKeyIndicator() {
+            const storedKey = localStorage.getItem('gemini_api_key');
+            if (storedKey) {
+                apiKeyInput.value = storedKey;
+                settingsIcon.classList.remove('text-red-700');
+                settingsIcon.classList.add('text-green-600');
+            } else {
+                settingsIcon.classList.remove('text-green-600');
+                settingsIcon.classList.add('text-red-700');
+            }
+        }
+        updateApiKeyIndicator();
+
+        // Modal Controls
+        openSettingsBtn.addEventListener('click', () => {
+            settingsModal.classList.remove('hidden');
+        });
+
+        closeSettingsBtn.addEventListener('click', () => {
+            settingsModal.classList.add('hidden');
+        });
+
+        saveApiKeyBtn.addEventListener('click', () => {
+            const key = apiKeyInput.value.trim();
+            if (key) {
+                localStorage.setItem('gemini_api_key', key);
+            } else {
+                localStorage.removeItem('gemini_api_key');
+            }
+            updateApiKeyIndicator();
+            settingsModal.classList.add('hidden');
+        });
+
+        // Build 10 LED segments per column
+        function buildLEDColumns() {
+            const rowCount = 10;
+            [colLeft, colCenter, colRight].forEach(col => {
+                col.innerHTML = '';
+                for (let i = 0; i < rowCount; i++) {
+                    const segment = document.createElement('div');
+                    segment.className = 'led-segment w-full h-4 rounded-xs';
+                    col.appendChild(segment);
+                }
+            });
+        }
+        buildLEDColumns();
+
+        // Safe Audio Context & Analyzer Initializer
+        async function ensureAudioInitialized() {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) {
+                    audioCtx = new AudioContextClass();
+                }
+            }
+
+            if (audioCtx && audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+
+            if (audioCtx && !analyserNode) {
+                analyserNode = audioCtx.createAnalyser();
+                analyserNode.fftSize = 64;
+                audioBufferData = new Uint8Array(analyserNode.frequencyBinCount);
+            }
+        }
+
+        // Web Audio Feedback Sound
+        function playChime(freq = 600, duration = 0.08) {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        function showMicError(title, msg) {
+            micErrorTitle.textContent = title;
+            micErrorDesc.textContent = msg;
+            micErrorNotice.classList.remove('hidden');
+            setTimeout(() => {
+                micErrorNotice.classList.add('hidden');
+            }, 6000);
+        }
+
+        // Toggle Microphone Listening with robust error catching across all browsers
+        async function startMicListening() {
+            await ensureAudioInitialized();
+            playChime(880, 0.1);
+            micErrorNotice.classList.add('hidden');
+
+            if (isFileProtocol) {
+                showMicError("FILE:// PROTOCOL RESTRICTED", "Browsers block microphone access on local files. Please run via http://localhost or HTTPS.");
+                return;
+            }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showMicError("UNSECURE CONNECTION", "Microphone access requires a secure origin (HTTPS or http://localhost).");
+                return;
+            }
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                showMicError("BROWSER UNSUPPORTED", "Speech Recognition is not supported by this browser. Use Chrome, Edge, or Safari.");
+                return;
+            }
+
+            try {
+                micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                if (micSource) {
+                    try { micSource.disconnect(); } catch(e) {}
+                }
+                micSource = audioCtx.createMediaStreamSource(micStream);
+                micSource.connect(analyserNode);
+
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+
+                recognition.onstart = () => {
+                    isListening = true;
+                    talkLabel.textContent = "LISTENING...";
+                    talkBtn.className = "w-full py-6 bg-red-600 border-2 border-red-400 text-black font-orbitron font-black text-xl md:text-2xl tracking-widest rounded-2xl shadow-2xl mic-active-glow transition-all duration-200 flex items-center justify-center gap-4 cursor-pointer";
+                };
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    stopMicListening();
+                    processQuery(transcript);
+                };
+
+                recognition.onerror = (event) => {
+                    stopMicListening();
+                    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                        showMicError("MIC PERMISSION DENIED", "Please allow microphone access in your browser settings.");
+                    }
+                };
+                
+                recognition.onend = () => { stopMicListening(); };
+
+                recognition.start();
+
+            } catch (err) {
+                stopMicListening();
+                showMicError("HARDWARE / PROTOCOL ERROR", "Could not initialize microphone. Ensure HTTPS or localhost.");
+            }
+        }
+
+        function stopMicListening() {
+            isListening = false;
+            
+            if (micStream) {
+                micStream.getTracks().forEach(track => track.stop());
+                micStream = null;
+            }
+            if (micSource) {
+                try { micSource.disconnect(); } catch(e) {}
+                micSource = null;
+            }
+
+            talkLabel.textContent = "TOUCH TO TALK";
+            talkBtn.className = "w-full py-6 bg-red-950 border-2 border-red-700 text-red-500 font-orbitron font-black text-xl md:text-2xl tracking-widest rounded-2xl shadow-2xl transition-all duration-200 flex items-center justify-center gap-4 cursor-pointer active:scale-95";
+        }
+
+        // Process Prompt via Google Gemini 3 Flash API
+        async function processQuery(userQuery) {
+            talkLabel.textContent = "PROCESSING...";
+            
+            const systemPrompt = `You are K.I.T.T. (Knight Industries Two Thousand) from Knight Rider. Speak strictly as K.I.T.T.: intelligent, polite, witty, protective, and addressing the user as "Michael". Keep answers concise (1-3 short sentences).`;
+
+            let replyText = "";
+            const apiKey = localStorage.getItem('gemini_api_key');
+
+            if (apiKey) {
+                try {
+                    const ai = new GoogleGenAI({ apiKey });
+
+                    const response = await ai.models.generateContent({
+                        model: 'gemini-3-flash-preview',
+                        contents: [{ parts: [{ text: userQuery }] }],
+                        config: { systemInstruction: systemPrompt }
+                    });
+
+                    replyText = response.text;
+                } catch (err) {
+                    console.warn("Gemini Response Fallback:", err);
+                    replyText = generateFallbackResponse(userQuery);
+                }
+            } else {
+                replyText = generateFallbackResponse(userQuery);
+            }
+
+            if (replyText) {
+                speakResponse(replyText);
+            }
+        }
+
+        // K.I.T.T. Local Fallback Responses
+        function generateFallbackResponse(query) {
+            const q = query.toLowerCase();
+            if (q.includes("hello") || q.includes("hi")) {
+                return "Greetings, Michael. All scanners and voice synthesizers are functioning within normal parameters.";
+            } else if (q.includes("who are you")) {
+                return "I am the Knight Industries Two Thousand, Michael.";
+            } else if (q.includes("turbo") || q.includes("speed")) {
+                return "Super Pursuit Mode is primed and standing by, Michael.";
+            } else {
+                return "Right away, Michael. My long-range sensors are currently monitoring the perimeter.";
+            }
+        }
+
+        // Speech Output Synthesizer
+        function speakResponse(text) {
+            if (!('speechSynthesis' in window)) return;
+
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 1.0;
+            utterance.pitch = 0.95;
+
+            const voices = window.speechSynthesis.getVoices();
+            const preferredVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('David')));
+            if (preferredVoice) utterance.voice = preferredVoice;
+
+            utterance.onstart = () => {
+                isSpeaking = true;
+                talkLabel.textContent = "K.I.T.T. SPEAKING...";
+            };
+
+            utterance.onend = () => {
+                isSpeaking = false;
+                talkLabel.textContent = "TOUCH TO TALK";
+            };
+
+            utterance.onerror = () => {
+                isSpeaking = false;
+                talkLabel.textContent = "TOUCH TO TALK";
+            };
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // Real-Time Web Audio Level Animation Loop
+        let simulatedVol = 0;
+
+        function animateVoiceboxVisualizer() {
+            requestAnimationFrame(animateVoiceboxVisualizer);
+
+            let activeCount = 0;
+
+            if (isListening && analyserNode && audioBufferData) {
+                analyserNode.getByteFrequencyData(audioBufferData);
+                let sum = 0;
+                for (let i = 0; i < audioBufferData.length; i++) {
+                    sum += audioBufferData[i];
+                }
+                const avg = sum / audioBufferData.length;
+                activeCount = Math.floor((avg / 128) * 10);
+            } else if (isSpeaking) {
+                simulatedVol += (Math.random() * 0.4 - 0.2);
+                simulatedVol = Math.max(0.3, Math.min(1.0, simulatedVol));
+                activeCount = Math.floor(simulatedVol * 10);
+            } else {
+                activeCount = 1;
+            }
+
+            updateLEDColumn(colCenter, activeCount);
+            updateLEDColumn(colLeft, Math.max(0, activeCount - 2));
+            updateLEDColumn(colRight, Math.max(0, activeCount - 2));
+        }
+
+        function updateLEDColumn(colElement, activeSegmentCount) {
+            const leds = colElement.children;
+            const total = leds.length;
+            const mid = Math.floor(total / 2);
+
+            for (let i = 0; i < total; i++) {
+                const distFromCenter = Math.abs(i - mid);
+                if (distFromCenter <= Math.floor(activeSegmentCount / 2)) {
+                    leds[i].classList.add('active');
+                } else {
+                    leds[i].classList.remove('active');
+                }
+            }
+        }
+
+        // Render loop startup
+        animateVoiceboxVisualizer();
+
+        // Touch & Click Event Listener for Push-to-Talk
+        talkBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (isSpeaking) {
+                window.speechSynthesis.cancel();
+                isSpeaking = false;
+            }
+
+            if (isListening) {
+                if (recognition) recognition.stop();
+                stopMicListening();
+            } else {
+                startMicListening();
+            }
+        });
+
+        // Pre-fetch browser speech synthesis voices
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.onvoiceschanged = () => {
+                window.speechSynthesis.getVoices();
+            };
+        }
+    </script>
+</body>
+</html>
